@@ -187,19 +187,37 @@ def main():
             D_h = st.number_input("Гидравлический диаметр (мм)", 0.0, 50.0, 3.0, 0.5)
             length = st.number_input("Длина канала (мм)", 0.0, 5000.0, 100.0, 50.0)
         with col2:
-            author = st.selectbox("Автор эксперимента", df['author'].unique())
-            geometry = st.selectbox("Геометрия", ["tube", "plate"])
+            st.selectbox("Автор эксперимента", df['author'].unique())
+            st.selectbox("Геометрия", ["tube", "plate"])
+        
         if st.button("Рассчитать CHF", type="primary"):
             input_df = pd.DataFrame([[pressure, mass_flux, x_e_out, D_e, D_h, length]],
                                    columns=['pressure_[MPa]', 'mass_flux_[kg/m2-s]', 'x_e_out_[-]', 
                                             'D_e_[mm]', 'D_h_[mm]', 'length_[mm]'])
             input_df['pressure_massflux'] = input_df['pressure_[MPa]'] * input_df['mass_flux_[kg/m2-s]']
+            input_df['author_encoded'] = 0
+            input_df['geometry_encoded'] = 0
+            
+            input_df = input_df[['pressure_[MPa]', 'mass_flux_[kg/m2-s]', 'x_e_out_[-]', 
+                                 'D_e_[mm]', 'D_h_[mm]', 'length_[mm]', 'pressure_massflux',
+                                 'author_encoded', 'geometry_encoded']]
+            
             model, scaler, _, _, _ = train_random_forest(X, y)
             input_scaled = scaler.transform(input_df)
             prediction = model.predict(input_scaled)[0]
+            
             safety_level, recommendation = get_safety_level(prediction)
+            
             st.metric("Прогнозируемый CHF", f"{prediction:.3f} MW/m²")
             st.metric("Уровень безопасности", safety_level)
+            
+            if safety_level == "CRITICAL":
+                st.error("ВНИМАНИЕ: Критический уровень CHF!")
+            elif safety_level == "NORMAL":
+                st.warning("Уровень CHF в пределах нормы.")
+            else:
+                st.success("Безопасный уровень CHF.")
+            
             st.session_state.history.append({
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'pressure': pressure,
@@ -209,6 +227,7 @@ def main():
             })
             if len(st.session_state.history) > 5:
                 st.session_state.history = st.session_state.history[-5:]
+        
         st.subheader("История прогнозов (последние 5)")
         if st.session_state.history:
             history_df = pd.DataFrame(st.session_state.history)
@@ -217,7 +236,7 @@ def main():
                 st.session_state.history = []
                 st.rerun()
         else:
-            st.info("Нет сохранённых прогнозов. Сделайте прогноз, чтобы заполнить историю.")
+            st.info("Нет сохранённых прогнозов.")
 
 if __name__ == "__main__":
     main()
